@@ -1,41 +1,44 @@
 import yagmail
-import urllib.request, urllib.parse, urllib.error
+import urllib.request, urllib.error
 from bs4 import BeautifulSoup
 import ssl
 import keyring
 import datetime
+import sqlite3
+from pathlib import Path
 #Module to Scrape Destinations from www.EscapeHouston.com
 
 #Inputs
-to = 'scr343@gmail.com', 'sjh6v8@gmail.com'
+#emails = 'xx@gmail.com', 'xx@gmail.com'
 subject = "Escape Houston"
-file = 'EHSS.txt'
-punc=','
+password = keyring.get_password("Gmail HIT Travel", "HITTravelDeals@gmail.com")
+email1 = keyring.get_password("email", "scr")
+email2 = keyring.get_password('email', 'sjr')
+emails=(email1, email2)
+
+file='ehss.txt'
+db_path = Path(r"C:\Users\Stephen\Python\Travel")
+db_file = db_path / "Escape.db"
+
+# Create Database Connections
+cnx = sqlite3.connect(db_file)
+cur = cnx.cursor()
 
 #What deals do you want to be notified of?
-city1='Albuquerque'
+allflights='Flights:' # use Flights for all trips and include punctuation
+city1='XX'
 city2='XX'
 city3='Durango'
 city4='Sacramento'
 city5='Farmington'
 city6='XX'
 city7='XX'
-city8='Reno'
-city9='Los Angeles'
+city8='Boise'
+city9='XX'
 city10='Moab'
-city11=city1+punc
-city22=city2+punc
-city33=city3+punc
-city44=city4+punc
-city55=city5+punc
-city66=city6+punc
-city77=city7+punc
-city88=city8+punc
-city99=city9+punc
-city100=city10+punc
+
 
 #Scraping
-
 # Ignore SSL certificate errors
 ctx = ssl.create_default_context()
 ctx.check_hostname = False
@@ -62,6 +65,8 @@ for x in info:
     word=x.split()
 
     for i in word:
+        if i == allflights:
+            deals.append(x)
         if i == city1:
             deals.append(x)
         if i == city2:
@@ -82,60 +87,41 @@ for x in info:
             deals.append(x)
         if i == city10:
             deals.append(x)
-        if i == city11:
-            deals.append(x)
-        if i == city22:
-            deals.append(x)
-        if i == city33:
-            deals.append(x)
-        if i == city44:
-            deals.append(x)
-        if i == city55:
-            deals.append(x)
-        if i == city66:
-            deals.append(x)
-        if i == city77:
-            deals.append(x)
-        if i == city88:
-            deals.append(x)
-        if i == city99:
-            deals.append(x)
-        if i == city100:
-            deals.append(x)
 
 # Adding Date Stamp
-x=datetime.datetime.now()
-today=x.strftime("%x")
+today=datetime.datetime.now()
+todaystr=today.strftime("%x")
 
-#Open / Create a File / Append Date and Title
-f=open(file,'a+')
-f.write(today)
-f.write('\n')
 for element in deals:
-    f.write(element)
-f.write('\n')
-f.close()
+    cur.execute('''INSERT OR IGNORE INTO people (datetime_txt, flights) VALUES (?, ?)''', (today, element))
 
-#Compare Date and Title for New Travel Updates
-f=open(file,'r')
-comparedeal=list()
-for line in f:
-    line=line.rstrip()
-    comparedeal.append(line)
-if comparedeal[-3] != comparedeal[-1] and comparedeal[-1] != '':
+cnx.commit()
 
-#if the last deal is not the same as the one before send an email update
-    print(today)
-    for d in deals:
-        print(d)
-    print(url)
-#change deals list to a string
-    dealsstring = ''.join(deals)
+cur.execute('''SELECT flights 
+                FROM people
+                WHERE datetime_txt = ( SELECT MAX(datetime_txt) 
+                FROM people
+                WHERE datetime_txt < ( SELECT MAX(datetime_txt) 
+                FROM people)
+                )''')
+date2deals=cur.fetchall()
+
+
+cur.execute('''SELECT flights 
+                FROM people 
+                WHERE datetime_txt = (SELECT MAX(datetime_txt)
+                FROM people)''')
+date1deals=cur.fetchall()
+
+# Compare Date and Title for New Travel Updates
+difference=set(date1deals)-set(date2deals)
+if len(difference) != 0:
 
 #Send out an Update Email
 
-    password=keyring.get_password("Gmail HIT Travel", "HITTravelDeals@gmail.com")
+
     yag = yagmail.SMTP('HITTravelDeals@gmail.com', password)
-    contents=[dealsstring, url]
-    yag.send(to,subject,contents)
+    contents=[todaystr, url, date1deals]
+    yag.send(emails,subject,contents)
+
 quit()
